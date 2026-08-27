@@ -82,8 +82,16 @@ export async function POST(request: Request) {
     const parsed = JSON.parse(response.output_text) as unknown;
     if (!isAnalysis(parsed)) throw new Error("Unexpected structured response");
     return NextResponse.json({ result: parsed });
-  } catch {
-    console.error("Problem understanding request failed");
-    return NextResponse.json({ error: "The demo AI is not available right now. You can still choose an option below.", code: "unavailable" }, { status: 503 });
+    } catch (error) {
+    console.error("Problem understanding request failed:", error);
+
+    return NextResponse.json(
+      {
+        error: "The demo AI is not available right now.",
+        code: "unavailable",
+        details: error instanceof Error ? error.message : String(error),
+      },
+      { status: 503 }
+    );
   }
 }
