@@ -4,12 +4,21 @@ import { FormEvent, useState } from "react";
 import { CATEGORY_LABELS, ProblemAnalysis, ProblemCategory } from "../lib/problem-categories";
 
 type ProblemUnderstandingProps = {
-  onUseCategory: (category: Exclude<ProblemCategory, "unknown">) => void;
+  onUseCategory: (
+    category: Exclude<ProblemCategory, "unknown">
+  ) => void;
+
+  onCategoryDetected: (
+    category: Exclude<ProblemCategory, "unknown">
+  ) => void;
 };
 
 type ApiResponse = { result?: ProblemAnalysis; error?: string };
 
-export default function ProblemUnderstanding({ onUseCategory }: ProblemUnderstandingProps) {
+export default function ProblemUnderstanding({
+  onUseCategory,
+  onCategoryDetected,
+}: ProblemUnderstandingProps) {
   const [description, setDescription] = useState("");
   const [result, setResult] = useState<ProblemAnalysis | null>(null);
   const [message, setMessage] = useState("");
@@ -38,6 +47,13 @@ export default function ProblemUnderstanding({ onUseCategory }: ProblemUnderstan
         return;
       }
       setResult(data.result);
+
+if (
+  !data.result.needs_clarification &&
+  data.result.category !== "unknown"
+) {
+  onCategoryDetected(data.result.category);
+}
     } catch {
       setMessage("We could not understand that right now. Please choose an option below.");
     } finally {

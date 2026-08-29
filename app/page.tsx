@@ -7,6 +7,10 @@ import { CATEGORY_TO_PROBLEM_INDEX, JOURNEY_CONTENT, JourneyContent, ProblemCate
 
 type Screen = "welcome" | "problem" | "questions" | "plan" | "tracker";
 type ModalKind = "help" | "status" | "grievance" | "completion" | null;
+type CompletionState = {
+  completedStep: string;
+  nextStep: string | null;
+};
 
 const problems = [
   { category: "claim_delayed", icon: "⏳", title: "My PF claim is delayed", text: "I have submitted a claim but it has not moved forward." },
@@ -26,6 +30,7 @@ export default function Home() {
   const [statusComplete, setStatusComplete] = useState(false);
   const [trackerStep, setTrackerStep] = useState(0);
   const [modal, setModal] = useState<ModalKind>(null);
+  const [completion, setCompletion] = useState<CompletionState | null>(null);
 
   const go = (next: Screen) => { window.scrollTo({ top: 0, behavior: "smooth" }); setScreen(next); };
   const back = () => {
@@ -37,14 +42,33 @@ export default function Home() {
   const completeStatusCheck = () => {
   if (!acknowledged) return;
 
+  const completedStep =
+    trackerStep === 0
+      ? journey.trackerStep
+      : trackerStep === 1
+        ? journey.nextStep
+        : "Follow up";
+
+  const nextStep =
+    trackerStep === 0
+      ? journey.nextStep
+      : trackerStep === 1
+        ? "Follow up"
+        : null;
+
+  setCompletion({
+    completedStep,
+    nextStep,
+  });
+
+  setAcknowledged(false);
+
   if (trackerStep < 2) {
     setTrackerStep((current) => current + 1);
-    setAcknowledged(false);
-    setModal("completion");
-    return;
+  } else {
+    setStatusComplete(true);
   }
 
-  setStatusComplete(true);
   setModal("completion");
 };
   const selectProblem = (categoryToUse: SupportedProblemCategory) => {
@@ -55,6 +79,7 @@ export default function Home() {
     setAcknowledged(false);
     setStatusComplete(false);
     setTrackerStep(0);
+    setCompletion(null);
   };
   const useAiCategory = (categoryToUse: Exclude<ProblemCategory, "unknown">) => {
     selectProblem(categoryToUse);
@@ -67,12 +92,19 @@ export default function Home() {
         {screen !== "welcome" && <header className="topbar"><button className="icon-button" onClick={back} aria-label="Go back">←</button><Brand /><button className="help" onClick={() => setModal("help")} aria-label="About this prototype">?</button></header>}
 
         {screen === "welcome" && <Welcome onStart={() => go("problem")} />}
-        {screen === "problem" && <ProblemScreen selected={selected} onSelect={(index) => selectProblem(problems[index].category)} onContinue={() => go("questions")} onUseAiCategory={useAiCategory} />}
+        {screen === "problem" && <ProblemScreen selected={selected} onSelect={(index) => selectProblem(problems[index].category)} onContinue={() => go("questions")} onUseAiCategory={useAiCategory} onAiCategoryDetected={selectProblem}/>}
         {screen === "questions" && <QuestionScreen journey={journey} firstAnswer={firstAnswer} secondAnswer={secondAnswer} onFirstAnswer={setFirstAnswer} onSecondAnswer={setSecondAnswer} onContinue={() => go("plan")} />}
         {screen === "plan" && <PlanScreen category={category} journey={journey} firstAnswer={firstAnswer} secondAnswer={secondAnswer} onStatusGuide={() => setModal("status")} onGrievanceGuide={() => setModal("grievance")} onContinue={() => go("tracker")} />}
         {screen === "tracker" && <TrackerScreen category={category} journey={journey} acknowledged={acknowledged} complete={statusComplete} trackerStep={trackerStep} onAcknowledge={setAcknowledged} onComplete={completeStatusCheck} onOpenGuide={(kind) => setModal(kind)} />}
       </section>
-      <ModalContent kind={modal} category={category} journey={journey} bankDetailsContext={secondAnswer} onClose={() => setModal(null)} />
+      <ModalContent
+      kind={modal}
+      category={category}
+      journey={journey}
+      detailToCorrect={firstAnswer}
+      bankDetailsContext={secondAnswer}
+      completion={completion}
+      onClose={() => setModal(null)}/>
     </main>
   );
 }
@@ -81,8 +113,78 @@ function Welcome({ onStart }: { onStart: () => void }) {
   return <div className="welcome screen"><div className="welcome-top"><Brand /><span className="language">English⌄</span></div><div className="hero-art" aria-hidden="true"><div className="sun" /><div className="leaf leaf-one" /><div className="leaf leaf-two" /><div className="paper"><span /><span /><span /></div><div className="person"><div className="head" /><div className="body" /></div></div><div className="welcome-copy"><p className="eyebrow">A calm guide for your next step</p><h1>PF help,<br /><i>made simple.</i></h1><p className="lede">Tell us what is worrying you. We’ll help you understand what to do next.</p></div><button className="primary" onClick={onStart}>Get started <Arrow /></button><p className="privacy">No login. No personal details needed.</p><Disclaimer /></div>;
 }
 
-function ProblemScreen({ selected, onSelect, onContinue, onUseAiCategory }: { selected: number; onSelect: (index: number) => void; onContinue: () => void; onUseAiCategory: (category: Exclude<ProblemCategory, "unknown">) => void }) {
-  return <div className="screen content-screen problem-screen"><Progress current={1} /><p className="eyebrow">Let’s start here</p><h2>What do you need help with?</h2><p className="muted">Choose an option, or describe it in your own words.</p><ProblemUnderstanding onUseCategory={onUseAiCategory} /><div className="choice-divider"><span>or choose an option</span></div><div className="choice-list">{problems.map((problem, index) => <button key={problem.title} onClick={() => onSelect(index)} className={`choice ${selected === index ? "chosen" : ""}`} aria-pressed={selected === index}><span className="choice-icon">{problem.icon}</span><span><b>{problem.title}</b><small>{problem.text}</small></span><span className="radio">{selected === index && "✓"}</span></button>)}</div><button className="primary fixed-bottom" onClick={onContinue}>Continue <Arrow /></button></div>;
+function ProblemScreen({
+  selected,
+  onSelect,
+  onContinue,
+  onUseAiCategory,
+  onAiCategoryDetected,
+}: {
+  selected: number;
+  onSelect: (index: number) => void;
+  onContinue: () => void;
+  onUseAiCategory: (
+    category: Exclude<ProblemCategory, "unknown">
+  ) => void;
+  onAiCategoryDetected: (
+    category: Exclude<ProblemCategory, "unknown">
+  ) => void;
+}) {
+  return (
+    <div className="screen content-screen problem-screen">
+      <Progress current={1} />
+
+      <p className="eyebrow">Let’s start here</p>
+
+      <h2>What do you need help with?</h2>
+
+      <p className="muted">
+        Choose an option, or describe it in your own words.
+      </p>
+
+      <ProblemUnderstanding
+        onUseCategory={onUseAiCategory}
+        onCategoryDetected={onAiCategoryDetected}
+      />
+
+      <div className="choice-divider">
+        <span>or choose an option</span>
+      </div>
+
+      <div className="choice-list">
+        {problems.map((problem, index) => (
+          <button
+            key={problem.title}
+            onClick={() => onSelect(index)}
+            className={`choice ${
+              selected === index ? "chosen" : ""
+            }`}
+            aria-pressed={selected === index}
+          >
+            <span className="choice-icon">
+              {problem.icon}
+            </span>
+
+            <span>
+              <b>{problem.title}</b>
+              <small>{problem.text}</small>
+            </span>
+
+            <span className="radio">
+              {selected === index && "✓"}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <button
+        className="primary fixed-bottom"
+        onClick={onContinue}
+      >
+        Continue <Arrow />
+      </button>
+    </div>
+  );
 }
 
 function QuestionScreen({ journey, firstAnswer, secondAnswer, onFirstAnswer, onSecondAnswer, onContinue }: { journey: JourneyContent; firstAnswer: string; secondAnswer: string; onFirstAnswer: (value: string) => void; onSecondAnswer: (value: string) => void; onContinue: () => void }) {
@@ -265,19 +367,174 @@ function Progress({ current }: { current: number }) { return <div className="ste
 function OptionGroup({ label, items, value, onChange }: { label: string; items: string[]; value: string; onChange: (value: string) => void }) { return <div className="question"><label>{label}</label><div className="pills">{items.map((item) => <button key={item} onClick={() => onChange(item)} className={value === item ? "pill selected" : "pill"} aria-pressed={value === item}>{item}</button>)}</div></div>; }
 function Action({ number, tag, urgent, title, text, button, onClick }: { number: string; tag: string; urgent?: boolean; title: string; text: string; button: string; onClick: () => void }) { return <div className="action-card"><div className="number">{number}</div><div><span className={`tag ${urgent ? "urgent" : ""}`}>{tag}</span><h3>{title}</h3><p>{text}</p><button className="text-button" onClick={onClick}>{button} <Arrow /></button></div></div>; }
 function Timeline({ state = "", number, title, note }: { state?: string; number: string; title: string; note: string }) { return <div className={`timeline-item ${state}`}><span>{number}</span><div><b>{title}</b><small>{note}</small></div></div>; }
-function Disclaimer() { return <p className="disclaimer">PF Sahayak is an independent hackathon prototype. It is not affiliated with, endorsed by, or an official service of EPFO. No live services are connected.</p>; }
+function Disclaimer() { return <p className="disclaimer">PF Sahayak is an BuildWhatMovesIndia hackathon prototype organized by Varun Mayya and his Team backed by OpenAI. It is not affiliated with, endorsed by, or an official service of EPFO. No live services are connected.</p>; }
 
-function ModalContent({ kind, category, journey, bankDetailsContext, onClose }: { kind: ModalKind; category: SupportedProblemCategory; journey: JourneyContent; bankDetailsContext: string; onClose: () => void }) {
+function ModalContent({
+  kind,
+  category,
+  journey,
+  detailToCorrect,
+  bankDetailsContext,
+  completion,
+  onClose,
+}: {
+  kind: ModalKind;
+  category: SupportedProblemCategory;
+  journey: JourneyContent;
+  detailToCorrect: string;
+  bankDetailsContext: string;
+  completion: CompletionState | null;
+  onClose: () => void;
+}) {
   if (!kind) return null;
-  if (kind === "help") return <JourneyModal title="About this prototype" onClose={onClose}><p>This is an independent hackathon prototype that uses sample information only.</p><p>It does not connect to EPFO, any government portal, or any live service. Do not enter personal information here.</p></JourneyModal>;
+  if (kind === "help") return <JourneyModal title="About this prototype" onClose={onClose}><p>This is an BuildWhatMovesIndia hackathon prototype organized by Varun Mayya and his Team backed by OpenAI that uses sample information only.</p><p>It does not connect to EPFO, any government portal, or any live service. Do not enter personal information here.</p></JourneyModal>;
   if (kind === "status") return <JourneyModal title={`How to ${journey.firstAction.title.toLowerCase()}`} onClose={onClose}><p className="modal-intro">Use this as a simple demo checklist. PF Sahayak does not open or connect to any real portal.</p><ol className="guide-list"><li>Visit the official member service you normally use, directly in your own browser.</li><li>Sign in only on the official site using your own details.</li><li>{category === "details_need_correction" ? "Review the name, bank, or KYC detail that needs attention." : "Find your submitted claim and note the status shown."}</li><li>Save the acknowledgement or a screenshot for your records. Do not share it in this prototype.</li></ol><div className="modal-note"><b>What to look for</b><br />{category === "details_need_correction" ? "Note which detail needs correction so you can explain it clearly in the next step." : "Note whether the claim is under process, needs attention, or is settled. This helps you decide the next step."}</div></JourneyModal>;
-  if (kind === "grievance") return <JourneyModal title="Example: what to write" onClose={onClose}><p className="modal-intro">Adapt this template on the official channel you choose. The examples below use mock information only.</p><div className="template">{category === "details_need_correction" ? <CorrectionTemplate context={bankDetailsContext} /> : <><p><b>Subject:</b> Follow-up on {category === "payment_not_received" ? "settled claim payment" : "pending PF claim"}</p><p>Hello,<br />I submitted my PF claim on [date]. My sample claim reference is <b>DEMO-2026-0042</b>. The claim currently shows as [status].</p><p>Please let me know if any action or document is needed from me. I have kept my acknowledgement for reference.</p></>}<p>Thank you,<br />[Your name]</p></div><div className="modal-note"><b>Include only what is needed</b><br />{category === "details_need_correction" ? "Describe the member/KYC detail, claim context, or bank account/IFSC detail you identified. Never add OTPs, passwords, payment details, or identity numbers." : "Use your claim reference, submission date, and the status you saw. Never add OTPs, passwords, payment details, or identity numbers."}</div></JourneyModal>;
-  return <JourneyModal title="Tracker updated" onClose={onClose}><div className="completion-message"><span>✓</span><p><b>Nice work — you completed: {journey.trackerStep.toLowerCase()}.</b><br />Your tracker now points to the next step: {journey.nextStep.toLowerCase()}.</p></div></JourneyModal>;
+  if (kind === "grievance") return <JourneyModal title="Example: what to write" onClose={onClose}><p className="modal-intro">Adapt this template on the official channel you choose. The examples below use mock information only.</p><div className="template">{category === "details_need_correction" ? <CorrectionTemplate
+  detail={detailToCorrect}
+  context={bankDetailsContext}
+/> : <><p><b>Subject:</b> Follow-up on {category === "payment_not_received" ? "settled claim payment" : "pending PF claim"}</p><p>Hello,<br />I submitted my PF claim on [date]. My sample claim reference is <b>DEMO-2026-0042</b>. The claim currently shows as [status].</p><p>Please let me know if any action or document is needed from me. I have kept my acknowledgement for reference.</p></>}<p>Thank you,<br />[Your name]</p></div><div className="modal-note"><b>Include only what is needed</b><br />{category === "details_need_correction" ? "Describe the member/KYC detail, claim context, or bank account/IFSC detail you identified. Never add OTPs, passwords, payment details, or identity numbers." : "Use your claim reference, submission date, and the status you saw. Never add OTPs, passwords, payment details, or identity numbers."}</div></JourneyModal>;
+  if (kind === "completion" && completion) {
+  return (
+    <JourneyModal title="Tracker updated" onClose={onClose}>
+      <div className="completion-message">
+        <span>✓</span>
+        <p>
+          <b>
+            Nice work — you completed:{" "}
+            {completion.completedStep.toLowerCase()}.
+          </b>
+          <br />
+          {completion.nextStep
+            ? `Your tracker now points to the next step: ${completion.nextStep.toLowerCase()}.`
+            : "You have completed the main steps of this guide."}
+        </p>
+      </div>
+    </JourneyModal>
+  );
 }
 
-function CorrectionTemplate({ context }: { context: string }) {
-  if (context === "A PF claim or settlement") return <><p><b>Subject:</b> Request to review bank details for a PF claim</p><p>Hello,<br />I noticed an issue with my bank details while reviewing a PF claim or settlement. My sample claim reference is <b>DEMO-2026-0042</b>.</p><p>Please let me know if any action is needed to review the bank detail connected to this claim.</p></>;
-  if (context === "My EPFO/UAN profile") return <><p><b>Subject:</b> Request to review bank KYC/member detail</p><p>Hello,<br />I noticed that the bank detail in my member/KYC profile may need correction.</p><p>Please let me know how I can review the relevant member or KYC detail. I have not included any sensitive information here.</p></>;
-  if (context === "My bank account") return <><p><b>Subject:</b> Request to correct bank account or IFSC detail</p><p>Hello,<br />I need to review the bank account or IFSC detail connected to my PF records.</p><p>Please let me know how I can correct the relevant bank detail. I have not included any sensitive information here.</p></>;
-  return <><p><b>Subject:</b> Help identifying a bank-detail correction</p><p>Hello,<br />I am not sure where the incorrect bank detail appears.</p><p>I will first check whether it is in my member/KYC profile or relates to a PF claim or settlement, then provide the relevant context.</p></>;
+return null;
+}
+
+function CorrectionTemplate({
+  detail,
+  context,
+}: {
+  detail: string;
+  context: string;
+}) {
+  if (detail === "Name") {
+    return (
+      <>
+        <p>
+          <b>Subject:</b> Request to review name detail
+        </p>
+        <p>
+          Hello,<br />
+          I noticed that the name in my PF/member records may need correction.
+        </p>
+        <p>
+          Please let me know how I can review the relevant name detail and
+          request a correction. I have not included any sensitive information
+          here.
+        </p>
+      </>
+    );
+  }
+
+  if (detail === "KYC detail") {
+    return (
+      <>
+        <p>
+          <b>Subject:</b> Request to review KYC detail
+        </p>
+        <p>
+          Hello,<br />
+          I noticed that a KYC detail in my PF/member records may need
+          correction.
+        </p>
+        <p>
+          Please let me know how I can review the relevant KYC detail and
+          request a correction. I have not included any sensitive information
+          here.
+        </p>
+      </>
+    );
+  }
+
+  if (detail === "Bank details") {
+    if (context === "A PF claim or settlement") {
+      return (
+        <>
+          <p>
+            <b>Subject:</b> Request to review bank details for a PF claim
+          </p>
+          <p>
+            Hello,<br />
+            I noticed an issue with my bank details while reviewing a PF claim
+            or settlement. My sample claim reference is{" "}
+            <b>DEMO-2026-0042</b>.
+          </p>
+          <p>
+            Please let me know if any action is needed to review the bank
+            detail connected to this claim.
+          </p>
+        </>
+      );
+    }
+
+    if (context === "My EPFO/UAN profile") {
+      return (
+        <>
+          <p>
+            <b>Subject:</b> Request to review bank KYC/member detail
+          </p>
+          <p>
+            Hello,<br />
+            I noticed that the bank detail in my member/KYC profile may need
+            correction.
+          </p>
+          <p>
+            Please let me know how I can review the relevant member or KYC
+            detail. I have not included any sensitive information here.
+          </p>
+        </>
+      );
+    }
+
+    if (context === "My bank account") {
+      return (
+        <>
+          <p>
+            <b>Subject:</b> Request to correct bank account or IFSC detail
+          </p>
+          <p>
+            Hello,<br />
+            I need to review the bank account or IFSC detail connected to my
+            PF records.
+          </p>
+          <p>
+            Please let me know how I can correct the relevant bank detail. I
+            have not included any sensitive information here.
+          </p>
+        </>
+      );
+    }
+  }
+
+  return (
+    <>
+      <p>
+        <b>Subject:</b> Help identifying a detail correction
+      </p>
+      <p>
+        Hello,<br />
+        I noticed that a detail in my PF/member records may need correction.
+      </p>
+      <p>
+        I will first review the relevant detail and its context, then provide
+        the necessary information through the official channel.
+      </p>
+    </>
+  );
 }
