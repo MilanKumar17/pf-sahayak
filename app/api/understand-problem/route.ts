@@ -41,7 +41,10 @@ function isAnalysis(value: unknown): value is ProblemAnalysis {
 }
 
 export async function POST(request: Request) {
-  let payload: { description?: unknown };
+  let payload: {
+  description?: unknown;
+  language?: unknown;
+};
   try {
     payload = await request.json();
   } catch {
@@ -49,6 +52,8 @@ export async function POST(request: Request) {
   }
 
   const description = typeof payload.description === "string" ? payload.description.trim() : "";
+  const language =
+  payload.language === "Hinglish" ? "Hinglish" : "English";
   if (!description) {
     return NextResponse.json({ error: "Please describe your problem before continuing." }, { status: 400 });
   }
@@ -64,10 +69,17 @@ export async function POST(request: Request) {
       apiKey: process.env.GROQ_API_KEY,
       baseURL: "https://api.groq.com/openai/v1",
     });
+    const languageInstruction =
+  language === "Hinglish"
+    ? `Respond in simple, natural Hinglish written in Roman script. Keep common PF terms such as PF, claim, KYC, bank details, and payment in their familiar form. Do not use Devanagari script.`
+    : `Respond in simple, clear English.`;
     const response = await openai.responses.create({
       model: "openai/gpt-oss-20b",
       store: false,
-      instructions,
+      instructions: `${instructions}
+
+Language preference:
+${languageInstruction}`,
       input: description,
       text: {
         format: {

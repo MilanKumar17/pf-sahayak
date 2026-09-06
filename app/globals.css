@@ -18,3 +18,47 @@
   margin-top: 2px;
   white-space: nowrap;
 }
+.language-selector {
+  position: relative;
+}
+
+.language {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  padding: 6px 4px;
+}
+
+.language-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 130px;
+  padding: 6px;
+  background: #fffdf7;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+  z-index: 20;
+}
+
+.language-menu button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 9px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+  font: inherit;
+}
+
+.language-menu button:hover,
+.language-menu button.selected {
+  background: rgba(0, 100, 80, 0.08);
+}
