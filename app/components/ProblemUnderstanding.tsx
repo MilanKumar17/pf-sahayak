@@ -83,6 +83,25 @@ if (
   }
 
   const canContinue = result && !result.needs_clarification && result.category !== "unknown";
+  const matchedTitle =
+  language === "Hinglish"
+    ? result?.category === "claim_delayed"
+      ? "Mera PF claim delayed hai"
+      : result?.category === "payment_not_received"
+        ? "Mujhe abhi tak payment nahi mili"
+        : "Meri details mein correction chahiye"
+    : result?.category
+      ? CATEGORY_LABELS[result.category]
+      : "";
+
+const matchedExplanation =
+  language === "Hinglish"
+    ? result?.category === "claim_delayed"
+      ? "Claim pending hai bohot samay se."
+      : result?.category === "payment_not_received"
+        ? "Claim settled dikh raha hai, lekin payment abhi tak nahi mili."
+        : "Name, bank ya KYC details mein correction ki zarurat hai."
+    : result?.explanation ?? "";
 
   return (
     <section className="problem-understanding" aria-labelledby="describe-problem-title">
@@ -181,11 +200,11 @@ if (
   <div className="ai-result matched" role="status">
     <b>
       {language === "Hinglish"
-        ? `Humein sabse relevant guide mili: ${CATEGORY_LABELS[result.category]}`
-        : `We found the closest guide: ${CATEGORY_LABELS[result.category]}`}
+        ? `Humein sabse relevant guide mili: ${matchedTitle}`
+        : `We found the closest guide: ${matchedTitle}`}
     </b>
 
-    <p>{result.explanation}</p>
+    <p>{matchedExplanation}</p>
 
     <button
       type="button"
